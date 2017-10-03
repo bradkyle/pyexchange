@@ -8,8 +8,7 @@ import hashlib
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-from exchange.error import ServerError
+from error import ServerError
 
 class Client(object):
     """
@@ -63,27 +62,32 @@ class Client(object):
         return self._parse_server_error_or_raise_for_status(resp)
 
     def new_account(self, status=None, starting_balances=None):
+        data = {'starting_balances': 1000000,
+                'account_status': "ACTIVE"}
         route = '/v1/account/new'
-        data = {
-            'status': status,
-            'starting_balances': starting_balances,
-        }
         resp = self._post_request(route, data)
         account_key = resp['account_key']
         account_private = resp['account_private']
         return account_key, account_private
 
     def list_all_accounts(self):
-        route = '/v1/accounts/'
+        route = '/v1/accounts'
         resp = self._get_request(route)
         all_envs = resp['all_accounts']
         return all_envs
 
     def destroy_account(self, account_key):
-        route = '/v1/account/{}/destroy/'.format(account_key)
-        self._post_request(route, None)
+        route = '/v1/account/{}/destroy'.format(account_key)
+        data = {"hello":"hello"}
+        self._post_request(route, data)
 
 if __name__ == '__main__':
-    remote_base = 'http://127.0.0.1:8080'
+    remote_base = 'http://127.0.0.1:5000'
     client = Client(remote_base)
 
+    data = {'starting_balances': 1000000,
+            'account_status': "ACTIVE"}
+
+    resp = client._post_request('/v1/account/new', data)
+    account_key = resp['account_key']
+    account_private = resp['account_private']

@@ -1,14 +1,10 @@
 import uuid
-
-from exchange.core.orderbook import Orderbook
-from exchange.core.lendbook import Lendbook
-from exchange.asset.asset import Asset
-from exchange.account.account import Account
-from exchange.asset.pair import Pair
-from exchange.error import Error
-
-
-
+from orderbook.orderbook import Orderbook
+from offerbook.offerbook import Offerbook
+from asset.asset import Asset
+from account.account import Account
+from asset.pair import Pair
+from error import Error
 
 
 class Exchange():
@@ -16,7 +12,7 @@ class Exchange():
         self.assets = {}
         self.pairs = {}
         self.orderbooks = {}
-        self.lendbooks = {}
+        self.offerbooks = {}
         self.accounts = {}
         self.fees = {}
         self.sessions = {}
@@ -30,12 +26,14 @@ class Exchange():
         account_key = str(uuid.uuid4().hex)[:8]
         account_private = str(uuid.uuid4().hex)[:10]
         self.accounts[account_key] = Account(account_key, account_private, balances, status)
+        return account_key, account_private
 
     def return_all_accounts(self):
-        return dict([(instance_id, env.spec.id) for (instance_id, env) in self.envs.items()])
+        return dict([(account_key, account.balances) for (account_key, account) in self.accounts.items()])
 
     def destroy_account(self, account_key):
         del self.accounts[account_key]
+        return
 
     # Assets & Pairs -------------------------------------------------------------------------------------------------->
 
@@ -50,13 +48,19 @@ class Exchange():
         asset = self.assets[asset_symbol]
         return asset
 
+    def disable_asset(self):
+        return NotImplemented
+
     def return_all_assets(self):
-        return dict([(instance_id, env.spec.id) for (instance_id, env) in self.envs.items()])
+        return dict([(account_key, account.balances) for (account_key, account) in self.assets.items()])
 
     def new_pair(self, symbol, **kwargs):
         if symbol in self.pairs:
             raise Error('Cannot re-register pair with symbol: {}'.format(symbol))
         self.orderbooks[symbol] = Pair(symbol, **kwargs)
+
+    def disable_pair(self):
+        return NotImplemented
 
     def return_pair(self, symbol):
         if symbol not in self.pairs:
@@ -64,19 +68,21 @@ class Exchange():
         pair = self.pairs[symbol]
         return pair
 
-    # Funding & Lends ------------------------------------------------------------------------------------------------->
+    # Offering & Lends ------------------------------------------------------------------------------------------------>
 
-    def new_lendbook(self, asset_symbol):
+    def new_offerbook(self, asset_symbol):
         asset = self.return_asset(asset_symbol)
-        if asset in self.lendbooks:
+        if asset in self.offerbooks:
             raise Error('Cannot re-register lendbook for asset with symbol: {}'.format(asset_symbol))
-        self.lendbooks[asset_symbol] = Lendbook(asset)
+        self.offerbooks[asset_symbol] = Offerbook(asset)
 
-    def return_lendbook(self, asset_symbol):
+    def return_offerbook(self, asset_symbol):
         asset = self.return_asset(asset_symbol)
-        if asset not in self.lendbooks:
+        if asset not in self.offerbooks:
             raise Error('Cannot find lendbook for asset with symbol: {}'.format(asset_symbol))
-        return self.lendbooks[asset]
+        return self.offerbooks[asset]
+
+
 
     # Ordering & Trades ----------------------------------------------------------------------------------------------->
 
@@ -91,6 +97,8 @@ class Exchange():
         if pair not in self.orderbooks:
             raise Error('Cannot find orderbook for pair with symbol: {}'.format(symbol))
         return self.orderbooks[pair]
+
+
 
     # Setup & Utilities ----------------------------------------------------------------------------------------------->
 

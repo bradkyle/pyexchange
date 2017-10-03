@@ -9,9 +9,8 @@ from functools import wraps
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.contrib.cache import SimpleCache
-from .error import Error, InvalidUsage
-from .account.account import Account
-from exchange.core.exchange import Exchange
+from error import Error, InvalidUsage
+from exchange.exchange import Exchange
 import logging
 logger = logging.getLogger('werkzeug')
 logger.setLevel(logging.ERROR)
@@ -107,14 +106,15 @@ def new_account():
     account_key, account_private = exchange.new_account(status, balances)
     return jsonify(account_key=account_key, account_private=account_private)
 
-@app.route('/v1/accounts/', methods=['GET'])
+@app.route('/v1/accounts', methods=['GET'])
 def get_all_accounts():
     all_accounts = exchange.return_all_accounts()
     return jsonify(all_accounts=all_accounts)
 
-@app.route('/v1/account/<key>/destroy', methods=['GET'])
-def destroy_account(key):
-    exchange.destroy_account(key)
+@app.route('/v1/account/<account_key>/destroy', methods=['POST'])
+def destroy_account(account_key):
+    exchange.destroy_account(account_key)
+    return('', 204)
 
 # Public Endpoints ---------------------------------------------------------------------------------------------------->
 
@@ -222,10 +222,7 @@ def get_all_detailed_pairs(self):
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
 def new_order(payload):
-    symbol = get_required_param(payload, 'symbol')
-    amount = get_required_param(payload, 'amount')
-    price = get_required_param(payload, 'price')
-    side = get_required_param(payload, 'side')
+    raise NotImplemented
 
 @app.route('/v1/order/new/multi', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])

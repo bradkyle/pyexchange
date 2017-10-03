@@ -1,4 +1,4 @@
-class Lendbook():
+class Offerbook():
     def __init__(self, asset):
         self.asset = asset
 
