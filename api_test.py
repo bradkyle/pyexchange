@@ -2,9 +2,12 @@ import json
 import os
 import unittest
 import tempfile
+
+import pytest
 from mock import patch
 
-from .server import app
+import exchange.server
+from    exchange.test.client import Client
 
 import requests
 import six.moves.urllib.parse as urlparse
@@ -19,7 +22,7 @@ logger.setLevel(logging.INFO)
 
 
 host = '127.0.0.1'
-port = '5000'
+port = '8080'
 def get_remote_base():
     return 'http://{host}:{port}'.format(host=host, port=port)
 
@@ -29,7 +32,7 @@ def setup_background_server():
 
     global server_thread
     server_thread = Thread(target=start_server,
-                       args=(app))
+                       args=(server.app))
     server_thread.daemon = True
     server_thread.start()
     time.sleep(0.25) # give it a moment to settle
@@ -48,46 +51,21 @@ def with_server(fn):
     fn.teardown = teardown_background_server
     return fn
 
+needs_api_key = pytest.mark.skipif(os.environ.get('OPENAI_GYM_API_KEY') is None, reason="needs OPENAI_GYM_API_KEY")
 
 # Tests ===============================================================================================================>
 
 @with_server
-def test_new_account(self, data='{}'):
-    response = self.app.post('/v1/account/new', data=data, content_type='application/json')
-    self.assertEqual(response.status_code, 200)
-    response = json.loads(response.get_data())
-    account_key = response['account_key']
-    print(account_key)
-    print(self.exchange.accounts[account_key].private_key)
-    self.assertTrue(account_key in self.exchange.accounts)
-
-
-class MainTest(unittest.TestCase):
-    """Test case for the exchange methods."""
-
-    def setUp(self):
-        app.config['TESTING'] = True
-        app.config['WTF_CSRF_ENABLED'] = False
-        app.config['DEBUG'] = False
-
-        self.exchange = Exchange()
-
-        self.settings = self.exchange.settings
-        self.settings["public_rate_limit"] = ""
-        self.settings["private_rate_limit"] = ""
-        self.settings["default_initial_balance"] = 10000.00
-        self.settings["default_initial_status"] = "ACTIVE"
-
-        self.app = app.test_client()
+def test_new_account():
+    client = Client(get_remote_base())
+    account_key, account_private = client.new_account()
+    assert account_key in client.list_all_accounts()
+    client.destroy_account(account_key)
+    assert account_key not in client.list_all_accounts()
 
 
 
 
-    def test_auth_request(self):
-        return
-
-    def tearDown(self):
-        return NotImplemented
 
 if __name__ == "__main__":
     unittest.main()

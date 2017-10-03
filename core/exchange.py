@@ -1,8 +1,11 @@
-from .core.orderbook import Orderbook
-from .core.lendbook import Lendbook
-from .asset.asset import Asset
-from .asset.pair import Pair
-from .error import Error, InvalidUsage
+import uuid
+
+from exchange.core.orderbook import Orderbook
+from exchange.core.lendbook import Lendbook
+from exchange.asset.asset import Asset
+from exchange.account.account import Account
+from exchange.asset.pair import Pair
+from exchange.error import Error
 
 
 
@@ -10,7 +13,6 @@ from .error import Error, InvalidUsage
 
 class Exchange():
     def __init__(self):
-        self.settings = {}
         self.assets = {}
         self.pairs = {}
         self.orderbooks = {}
@@ -22,7 +24,20 @@ class Exchange():
 
     # Functionality ===================================================================================================>
 
-    # Crud ------------------------------------------------------------------------------------------------------------>
+    # Accounts -------------------------------------------------------------------------------------------------------->
+
+    def new_account(self, status, balances):
+        account_key = str(uuid.uuid4().hex)[:8]
+        account_private = str(uuid.uuid4().hex)[:10]
+        self.accounts[account_key] = Account(account_key, account_private, balances, status)
+
+    def return_all_accounts(self):
+        return dict([(instance_id, env.spec.id) for (instance_id, env) in self.envs.items()])
+
+    def destroy_account(self, account_key):
+        del self.accounts[account_key]
+
+    # Assets & Pairs -------------------------------------------------------------------------------------------------->
 
     def new_asset(self, asset_symbol, **kwargs):
         if asset_symbol in self.assets:
@@ -35,6 +50,9 @@ class Exchange():
         asset = self.assets[asset_symbol]
         return asset
 
+    def return_all_assets(self):
+        return dict([(instance_id, env.spec.id) for (instance_id, env) in self.envs.items()])
+
     def new_pair(self, symbol, **kwargs):
         if symbol in self.pairs:
             raise Error('Cannot re-register pair with symbol: {}'.format(symbol))
@@ -45,6 +63,8 @@ class Exchange():
             raise Error('Cannot find pair with symbol: {}'.format(symbol))
         pair = self.pairs[symbol]
         return pair
+
+    # Funding & Lends ------------------------------------------------------------------------------------------------->
 
     def new_lendbook(self, asset_symbol):
         asset = self.return_asset(asset_symbol)
@@ -57,6 +77,8 @@ class Exchange():
         if asset not in self.lendbooks:
             raise Error('Cannot find lendbook for asset with symbol: {}'.format(asset_symbol))
         return self.lendbooks[asset]
+
+    # Ordering & Trades ----------------------------------------------------------------------------------------------->
 
     def new_orderbook(self, symbol, **kwargs):
         pair = self.return_pair(symbol)

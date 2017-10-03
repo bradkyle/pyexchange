@@ -1,3 +1,4 @@
+import argparse
 import base64
 import hashlib
 import hmac
@@ -10,7 +11,7 @@ from flask_limiter.util import get_remote_address
 from werkzeug.contrib.cache import SimpleCache
 from .error import Error, InvalidUsage
 from .account.account import Account
-from .exchange import Exchange
+from exchange.core.exchange import Exchange
 import logging
 logger = logging.getLogger('werkzeug')
 logger.setLevel(logging.ERROR)
@@ -31,7 +32,7 @@ cache = SimpleCache()
 
 exchange = Exchange()
 
-settings = exchange.settings
+settings = {}
 
 settings["public_rate_limit"] = ""
 settings["private_rate_limit"] = ""
@@ -101,13 +102,19 @@ def get_optional_param(json, param, default):
 
 @app.route('/v1/account/new', methods=['POST'])
 def new_account():
-    status = get_optional_param(request.get_json(), 'status', settings["default_initial_balance"])
-    balances = get_optional_param(request.get_json(), 'starting_balances', settings["default_initial_status"])
-    account_key = str(uuid.uuid4().hex)[:8]
-    account_private = str(uuid.uuid4().hex)[:10]
-    exchange.accounts[account_key] = Account(account_key, account_private, balances, status)
+    balances = get_optional_param(request.get_json(), 'starting_balances', settings["default_initial_balance"])
+    status = get_optional_param(request.get_json(), 'status', settings["default_initial_status"])
+    account_key, account_private = exchange.new_account(status, balances)
     return jsonify(account_key=account_key, account_private=account_private)
 
+@app.route('/v1/accounts/', methods=['GET'])
+def get_all_accounts():
+    all_accounts = exchange.return_all_accounts()
+    return jsonify(all_accounts=all_accounts)
+
+@app.route('/v1/account/<key>/destroy', methods=['GET'])
+def destroy_account(key):
+    exchange.destroy_account(key)
 
 # Public Endpoints ---------------------------------------------------------------------------------------------------->
 
@@ -423,3 +430,23 @@ def get_inactive_margin():
 @handle_request
 def close_margin():
     return
+
+# Utilities and Debug =================================================================================================>
+
+@app.route('/v1/shutdown/', methods=['POST'])
+def shutdown():
+    """ Request a server shutdown - currently used by the integration tests to repeatedly create and destroy fresh copies of the server running in a separate thread"""
+    f = request.environ.get('werkzeug.server.shutdown')
+    f()
+    return 'Server shutting down'
+
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Start pyexchange API server')
+    parser.add_argument('-l', '--listen', help='interface to listen to', default='127.0.0.1')
+    parser.add_argument('-p', '--port', default=5000, type=int, help='port to bind to')
+
+    args = parser.parse_args()
+    print('Server starting at: ' + 'http://{}:{}'.format(args.listen, args.port))
+    app.run(host=args.listen, port=args.port)
