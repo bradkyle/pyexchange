@@ -73,16 +73,23 @@ class Exchange():
     def new_offerbook(self, asset_symbol):
         asset = self.return_asset(asset_symbol)
         if asset in self.offerbooks:
-            raise Error('Cannot re-register lendbook for asset with symbol: {}'.format(asset_symbol))
+            raise Error('Cannot re-register offerbook for asset with symbol: {}'.format(asset_symbol))
         self.offerbooks[asset_symbol] = Offerbook(asset)
 
     def return_offerbook(self, asset_symbol):
         asset = self.return_asset(asset_symbol)
         if asset not in self.offerbooks:
-            raise Error('Cannot find lendbook for asset with symbol: {}'.format(asset_symbol))
+            raise Error('Cannot find offerbook for asset with symbol: {}'.format(asset_symbol))
         return self.offerbooks[asset]
 
+    def new_offer(self):
+        return NotImplemented
 
+    def cancel_offer(self):
+        return NotImplemented
+
+    def return_offer(self):
+        return NotImplemented
 
     # Ordering & Trades ----------------------------------------------------------------------------------------------->
 
@@ -98,6 +105,17 @@ class Exchange():
             raise Error('Cannot find orderbook for pair with symbol: {}'.format(symbol))
         return self.orderbooks[pair]
 
+    def new_order(self):
+        return NotImplemented
+
+    def cancel_order(self):
+        return NotImplemented
+
+    def replace_order(self):
+        return NotImplemented
+
+    def return_order(self):
+        return NotImplemented
 
 
     # Setup & Utilities ----------------------------------------------------------------------------------------------->

@@ -5,7 +5,7 @@ new_account
 get_fee_info
     
     
-get_lendbook(asset):
+get_offerbook(asset):
     
     
 get_all_fundingbooks

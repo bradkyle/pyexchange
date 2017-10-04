@@ -19,6 +19,9 @@ class Client(object):
         self.session = requests.Session()
         self.session.headers.update({'Content-type': 'application/json'})
 
+    def add_header(self, name, value):
+        self.session.headers.update({name: value})
+
     def _parse_server_error_or_raise_for_status(self, resp):
         j = {}
         try:
@@ -80,6 +83,11 @@ class Client(object):
         route = '/v1/account/{}/destroy'.format(account_key)
         data = {"hello":"hello"}
         self._post_request(route, data)
+
+    def authenticate(self, data):
+        route = '/v1/authenticate'
+        resp = self._post_request(route, data)
+        return resp['test_response']
 
 if __name__ == '__main__':
     remote_base = 'http://127.0.0.1:5000'

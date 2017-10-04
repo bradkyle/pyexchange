@@ -46,6 +46,9 @@ class Order(object):
         self.close_price = 0.0
         self.time_created = time.time()
 
+    def status(self):
+        return NotImplemented
+
     @property
     def index(self):
         return NotImplemented

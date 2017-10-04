@@ -1,3 +1,8 @@
+import base64
+import hashlib
+import hmac
+import json
+
 import requests
 import six.moves.urllib.parse as urlparse
 import os
@@ -46,6 +51,8 @@ needs_api_key = pytest.mark.skipif(os.environ.get('OPENAI_GYM_API_KEY') is None,
 
 # Tests ===============================================================================================================>
 
+
+
 @with_server
 def test_create_list_destroy_account():
     client = exchange_client.Client(get_remote_base())
@@ -55,4 +62,54 @@ def test_create_list_destroy_account():
     assert account_key not in client.list_all_accounts()
 
 
+@with_server
+def test_auth_request():
+    client = exchange_client.Client(get_remote_base())
+    account_key, account_private = client.new_account()
 
+    payload = {'test': "test"}
+
+    payload_encoded = str.encode(json.dumps(payload))
+    b64 = base64.b64encode(payload_encoded)
+
+    signature = hmac.new(str.encode(account_private), b64, hashlib.sha384).hexdigest()
+
+    client.add_header('X-APIKEY', account_key)
+    client.add_header('X-PAYLOAD', b64)
+    client.add_header('X-SIGNATURE', signature)
+
+    payload_out = client.authenticate(payload)
+    payload_out = json.loads(payload_out)
+
+    print(payload['test'])
+    print("-------------------------------")
+    print(payload_out['test'])
+
+    assert payload['test'] == payload_out['test']
+
+
+@with_server
+def test_bad_auth_request_token():
+    with pytest.raises(Exception):
+        client = exchange_client.Client(get_remote_base())
+        account_key, account_private = client.new_account()
+
+        payload = {'test': "test"}
+
+        payload_encoded = str.encode(json.dumps(payload))
+        b64 = base64.b64encode(payload_encoded)
+
+        signature = hmac.new(str.encode("bad"), b64, hashlib.sha384).hexdigest()
+
+        client.add_header('X-APIKEY', account_key)
+        client.add_header('X-PAYLOAD', b64)
+        client.add_header('X-SIGNATURE', signature)
+
+        payload_out = client.authenticate(payload)
+        payload_out = json.loads(payload_out)
+
+        print(payload['test'])
+        print("-------------------------------")
+        print(payload_out['test'])
+
+        assert payload['test'] != payload_out['test']

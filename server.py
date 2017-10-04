@@ -41,28 +41,50 @@ settings["default_initial_status"] = "ACTIVE"
 
 def auth_request():
     api_key = request.headers.get('X-APIKEY')
-    payload = request.headers.get('X-PAYLOAD')
-    signature = request.headers.get('X-SIGNATURE')
 
     if api_key is None or api_key not in exchange.accounts:
         raise Error('Cannot find account with public key: {}'.format(api_key))
     account = exchange.accounts[api_key]
 
-    internal_signature = hmac.new(str.encode(account.private_key), payload, hashlib.sha384).hexdigest()
-    if internal_signature != signature:
-        raise Error('Wrong encoding.')
+    # payload = request.headers.get('X-PAYLOAD')
+    # signature = request.headers.get('X-SIGNATURE')
+    # if payload is not None:
+    #     internal_signature = hmac.new(str.encode(account.private_key), payload, hashlib.sha384).hexdigest()
+    #     if internal_signature != signature:
+    #         raise Error('Wrong encoding.')
+    #     payload = base64.b64decode(payload)
 
-    payload = base64.b64decode(payload)
-
-    return account, payload
+    return account
 
 def handle_request(f):
     @wraps(f)
     def _inner(*args, **kwargs):
-        if auth_request():
-            return
-        return f(*args, **kwargs)
 
+        print (request.url + " : " + str(request.remote_addr))
+
+        api_key = request.headers.get('X-APIKEY')
+
+        if api_key is None:
+            raise Error('no api key provided')
+
+        if api_key not in exchange.accounts:
+             raise Error('Cannot find account with public key: {}'.format(api_key))
+
+        account = exchange.accounts[api_key]
+
+        payload = request.headers.get('X-PAYLOAD')
+        signature = request.headers.get('X-SIGNATURE')
+
+        if payload is not None:
+                internal_signature = hmac.new(str.encode(account.private_key), str.encode(payload), hashlib.sha384).hexdigest()
+                if internal_signature != signature:
+                    raise Error('Wrong encoding.')
+                payload = base64.b64decode(payload)
+
+        kwargs['payload'] = payload
+        kwargs['account'] = account
+
+        return f(*args, **kwargs)
     return _inner
 
 def get_required_param(json, param):
@@ -87,6 +109,12 @@ def get_optional_param(json, param, default):
                                                                                                             default))
         value = default
     return value
+
+def get_required_value(dict, key):
+    return NotImplemented
+
+def get_optional_value(dict, key, default):
+    return NotImplemented
 
 # @app.errorhandler(InvalidUsage)
 # def handle_invalid_usage(error):
@@ -118,22 +146,23 @@ def destroy_account(account_key):
 
 # Public Endpoints ---------------------------------------------------------------------------------------------------->
 
-@app.route('/v1/lendbook/<asset_symbol>', methods=['GET'])
+@app.route('/v1/offerbook/<asset_symbol>', methods=['GET'])
 @limiter.limit(settings["public_rate_limit"])
-def get_lendbook(asset_symbol):
-    lendbook = exchange.return_lendbook(asset_symbol)
-    return jsonify(asks=lendbook.asks(), bids=lendbook.bids())
+def get_offerbook(asset_symbol):
+    offerbook = exchange.return_offerbook(asset_symbol)
+    return jsonify(asks=offerbook.asks(), bids=offerbook.bids())
 
-@app.route('/v1/lendbook/all', methods=['GET'])
+@app.route('/v1/offerbook/all', methods=['GET'])
 @limiter.limit(settings["public_rate_limit"])
-def get_all_lendbooks():
-    raise NotImplemented
+def get_all_offerbooks():
+    offerbooks = exchange.return_offerbooks()
+    return jsonify(offerbooks=offerbooks)
 
 @app.route('/v1/lends/<asset_symbol>', methods=['GET'])
 @limiter.limit(settings["public_rate_limit"])
 def get_lends(asset_symbol):
-    lendbook = exchange.return_lendbook(asset_symbol)
-    return jsonify(lends=lendbook.lends())
+    offerbook = exchange.return_offerbook(asset_symbol)
+    return jsonify(lends=offerbook.lends())
 
 @app.route('/v1/lends/all', methods=['GET'])
 @limiter.limit(settings["public_rate_limit"])
@@ -149,7 +178,8 @@ def get_orderbook(symbol):
 @app.route('/v1/orderbook/all', methods=['GET'])
 @limiter.limit(settings["public_rate_limit"])
 def get_all_orderbooks():
-    return
+    orderbooks = exchange.return_orderbooks()
+    return jsonify(orderbooks=orderbooks)
 
 @app.route('/v1/trades/<symbol>', methods=['GET'])
 @limiter.limit(settings["public_rate_limit"])
@@ -221,61 +251,98 @@ def get_all_detailed_pairs(self):
 @app.route('/v1/order/new', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def new_order(payload):
-    raise NotImplemented
+def new_order(payload, account):
+    symbol = get_required_param(payload, 'symbol')
+    price = get_required_param(payload, 'price')
+    amount = get_required_param(payload, 'amount')
+    side = get_required_param(payload, 'side')
+    kind = get_required_param(payload, 'kind')
+    is_hidden = get_optional_param(payload, 'is_hidden', False)
+    is_postonly = get_optional_param(payload, 'is_postonly', False)
+    use_all_available = get_optional_param(payload, 'use_all_available', False)
+    ocorder = get_optional_param(payload, 'ocorder', False)
+    buy_price_oco = get_optional_param(payload, 'ocorder', False)
+    sell_price_oco = get_optional_param(payload, 'ocorder', False)
+
+    order = exchange.new_order(account, symbol,price, amount, side, kind, is_hidden, is_postonly, use_all_available, ocorder, buy_price_oco, sell_price_oco)
+
+    return jsonify(order.order_id)
 
 @app.route('/v1/order/new/multi', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def multiple_new_orders(payload):
-    raise NotImplemented
+def multiple_new_orders(payload, account):
+    orders = get_required_param(payload, 'orders')
+    order_ids = []
+    for order in orders:
+        symbol = get_required_value(order, 'symbol')
+        price = get_required_value(order, 'price')
+        amount = get_required_value(order, 'amount')
+        side = get_required_value(order, 'side')
+        kind = get_required_value(order, 'kind')
+        is_hidden = get_optional_value(order, 'is_hidden', False)
+        is_postonly = get_optional_value(order, 'is_postonly', False)
+        use_all_available = get_optional_value(order, 'use_all_available', False)
+
+        order = exchange.new_order(account, symbol, price, amount, side, kind, is_hidden, is_postonly, use_all_available)
+
+        order_ids.append(order.order_id)
+
+    return jsonify(order_ids=order_ids)
 
 @app.route('/v1/order/cancel', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def cancel_order(payload):
-     return
+def cancel_order(payload, account):
+    order_id = get_required_param(payload, 'order_id')
+    order = exchange.cancel_order(account, order_id)
+    return jsonify(order_status=order.status())
 
 @app.route('/v1/order/cancel/multi', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def cancel_multiple_orders(payload):
-     return
+def cancel_multiple_orders(payload, account):
+    order_ids = get_required_param(payload, 'order_ids')
+    order_statuses = []
+    for order_id in order_ids:
+        order = exchange.cancel_order(account,order_id)
+        order_statuses.append(order.status())
+    return jsonify(order_ids=order_ids)
 
 @app.route('/v1/order/<order_id>/cancel/session', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def cancel_session_orders(payload):
+def cancel_session_orders(payload, account):
     raise NotImplemented
 
 @app.route('/v1/order/cancel/all', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def cancel_all_orders(payload):
+def cancel_all_orders(payload, account):
     return
 
 @app.route('/v1/order/<order_id>/replace', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def replace_order(payload):
+def replace_order(payload, account):
     return
 
 @app.route('/v1/order/cancel/session', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_order_status(payload):
+def get_order_status(payload, account):
     return
 
 @app.route('/v1/orders/active', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_active_orders(payload):
+def get_active_orders(payload, account):
     return
 
 @app.route('/v1/orders', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_order_history(payload):
+def get_order_history(payload, account):
     return
 
 # Offering Endpoints -------------------------------------------------------------------------------------------------->
@@ -283,25 +350,25 @@ def get_order_history(payload):
 @app.route('/v1/offer/new', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def new_offer():
+def new_offer(payload, account):
     return
 
 @app.route('/v1/offer/cancel', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def cancel_offer():
+def cancel_offer(payload, account):
     return
 
 @app.route('/v1/offer/<offer_id>', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_offer_status():
+def get_offer_status(payload, account):
     return
 
 @app.route('/v1/offer/all', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_offer_history():
+def get_offer_history(payload, account):
     return
 
 # Positioning Endpoints ----------------------------------------------------------------------------------------------->
@@ -309,13 +376,13 @@ def get_offer_history():
 @app.route('/v1/position/all', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_active_positions():
+def get_active_positions(payload, account):
     return
 
 @app.route('/v1/position/claim', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def claim_positions():
+def claim_positions(payload, account):
     return
 
 # Account Management Endpoints ---------------------------------------------------------------------------------------->
@@ -323,120 +390,135 @@ def claim_positions():
 @app.route('/v1/account', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_account_info():
+def get_account_info(payload, account):
     return
 
 @app.route('/v1/account/fees', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_account_fees():
+def get_account_fees(payload, account):
     return
 
 @app.route('/v1/account/summary', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_account_summary():
+def get_account_summary(payload, account):
     return
 
 @app.route('/v1/account/margin', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_margin_info():
+def get_margin_info(payload, account):
     return
 
 @app.route('/v1/account/balances', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_balances():
+def get_balances(payload, account):
     return
 
 @app.route('/v1/account/balances/history', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_balance_history():
+def get_balance_history(payload, account):
     return
 
 @app.route('/v1/account/depowith/history', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_deposit_withdrawal_history():
+def get_deposit_withdrawal_history(payload, account):
     return
 
 @app.route('/v1/account/deposit/history', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_deposit_history():
+def get_deposit_history(payload, account):
     return
 
 @app.route('/v1/account/withdraw/history', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_withdrawal_history():
+def get_withdrawal_history(payload, account):
     return
 
 @app.route('/v1/account/transfer/history', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_transfer_history():
+def get_transfer_history(payload, account):
     return
 
 @app.route('/v1/account/transfer', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def transfer():
+def transfer(payload, account):
     return
 
 @app.route('/v1/account/withdraw', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def withdraw():
+def withdraw(payload, account):
     return
 
 @app.route('/v1/account/deposit', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def deposit():
+def deposit(payload, account):
     return
 
 @app.route('/v1/account/trades', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_past_trades():
+def get_past_trades(payload, account):
     return
 
 @app.route('/v1/account/margin/trades', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_margin_trades():
+def get_margin_trades(payload, account):
     return
 
 @app.route('/v1/account/margin/active', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_active_margin():
+def get_active_margin(payload, account):
     return
 
 @app.route('/v1/account/margin/inactive', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def get_inactive_margin():
+def get_inactive_margin(payload, account):
     return
 
 @app.route('/v1/account/margin/close', methods=['POST'])
 @limiter.limit(settings["private_rate_limit"])
 @handle_request
-def close_margin():
+def close_margin(payload, account):
     return
 
 # Utilities and Debug =================================================================================================>
 
 @app.route('/v1/shutdown/', methods=['POST'])
 def shutdown():
-    """ Request a server shutdown - currently used by the integration tests to repeatedly create and destroy fresh copies of the server running in a separate thread"""
+    """
+    Request a server shutdown - currently used by the
+    integration tests to repeatedly create and destroy
+    fresh copies of the server running in a separate thread
+    """
     f = request.environ.get('werkzeug.server.shutdown')
     f()
     return 'Server shutting down'
 
+@app.route('/v1/authenticate', methods=['POST'])
+@handle_request
+def authenticate(payload, account):
+    """
+    Authenticate request - currently used by the
+    integration tests to test functionality of
+    request handler and the the authentication
+    therin
+    """
+
+    return jsonify(test_response=payload.decode('utf-8'))
 
 
 if __name__ == '__main__':

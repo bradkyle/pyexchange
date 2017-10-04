@@ -1,134 +1,87 @@
-from collections import deque
-from .engine import *
-from .ticker import Ticker
-
-class OrderQuantityTooSmall(Exception):pass
-class OrderNotFound(Exception):pass
-class OrderAlreadyFilled(Exception):pass
-
-
-class OrderRegistry():
-    def __init__(self):
-        self.orders = {}
-
-    def make(self, order):
-        class Tracker():
-            def __init__(self):
-                raise NotImplementedError
-
-    def find(self, order_id):
-        return NotImplementedError
-
-
-
-orderRegistry = OrderRegistry()
-
-def get_order(order_id):
-    raise NotImplementedError
-
-def find_order():
-    raise NotImplementedError
-
-def new_order(symbol, amount, price, side, **kwargs):
-    raise NotImplementedError
-
-def cancel_order(order_id):
-    raise NotImplementedError
-
-def cancel_multiple_orders(order_ids):
-    raise NotImplementedError
-
-def replace_order(old_order_id , symbol, amount, price, side, **kwargs):
-    raise NotImplementedError
-
-
-class Orderbook(object):
-
-
+class Orderbook():
     def __init__(self, pair, engine_type="fifo"):
         self.pair = pair
-
         self.engine_type = engine_type
-        self.bids = Queue()
-        self.asks = Queue()
-        self.stop_bids = Queue()
-        self.stop_asks = Queue()
-        self.pending_orders = Queue()
+        self.engine = None
 
-        self.ticker = Ticker()
+        self.ticker = {}
 
-    def get_orderbook(self):
-        return NotImplementedError
-
-
-    def new_order(self, _order):
-        rmatched = False
-
-        #todo should this be 0 ?
-        if _order.quantity < _order.pair.min_order_size:
-            self._reject(_order, OrderQuantityTooSmall)
-            return
-
-        else:
-            if _order.stop_price != 0.0:
-                self._add_stop_order(_order)
-            else:
-                self._accept()
-                matched = self._add_order(_order)
-                if _order.is_ioc and not _order.is_filled:
-                    self.cancel_order(_order)
-
-            while not self.pending_orders.empty:
-                self._add_pending_orders()
-
-            self._update()
-        return matched
+        self.bids = {}
+        self.asks = {}
+        self.stop_bids = {}
+        self.stop_asks = {}
+        self.pending_orders = {}
 
 
-    def cancel_order(self, order):
+    # Stats & Asks/Bids ------------------------------------------------------------------------------------------->
 
-        if self._find_on_market(order):
-            if order.is_buy:
-                self.bids.erase(order)
-                found = True
-            else:
-                self.asks.erase(order)
-                found = True
+    def get_asks(self):
+        return NotImplemented
 
-            self._update()
-        else:
-            self._cancel_reject(order, OrderNotFound)
+    def get_bids(self):
+        return NotImplemented
 
-    def replace(self, order, size_delta, new_price):
+    def get_trades(self):
+        return NotImplemented
+
+    def get_stats(self):
+        return NotImplemented
+
+    @property
+    def market_price(self):
+        raise NotImplemented
+
+    # Ticker & Asks/Bids ----------------------------------------------------------------------------------------------->
+
+    def tick(self):
+        self.open_price = 0
+        self.close_price = 0
+        self.last_price = 0
+        self.mid_price = 0
+        self.low_price = 0
+        self.high_price = 0
+        self.lowest_ask = 0
+        self.lowest_ask_size = 0
+        self.highest_ask = 0
+        self.highest_ask_size = 0
+        self.lowest_bid = 0
+        self.lowest_bid_size = 0
+        self.highest_bid = 0
+        self.highest_bid_size = 0
+        self.total_ask_depth = 0
+        self.total_bid_depth = 0
+        self.day_volume = 0
+        self.week_volume = 0
+        self.month_volume = 0
+        self.volume_weighted_average_price = 0
+        self.volume_base = 0
+        self.volume_quote = 0
+        self.number_of_trades = 0
+
+    def get_ticker(self):
+        return NotImplemented
+
+
+    # Ordering Functionality ------------------------------------------------------------------------------------------>
+
+    def new_order(self, order):
         matched = False
-        change_price = (order.price != new_price)
-
-        if self._find_on_market(order):
-
-            # If there is not enough open quantity for the size reduction
-            if size_delta < 0.0 and (order.open_qty < -size_delta):
-                size_delta = -order.open_qty
-                if size_delta == 0.0:
-                    self._replace_reject(order,OrderAlreadyFilled)
-                    return False
-
-            new_open_qty = order.open_qty + size_delta
-
-            # If the size change will close the order
-            if not new_open_qty:
-                self.cancel_order(order)
+        if order.open_qty < order.pair.min_order_size:
+            return NotImplemented
+        elif order.open_qty is not None:
+            return NotImplemented
+        else:
+            if order.stop_price is not None:
+                self._add_stop_order(order)
             else:
-                self.cancel_order(order)
                 matched = self._add_order(order)
+                if order.is_ioc and not order.is_filled:
+                    self.cancel_order(order)
 
-            while not self.pending_orders.empty:
+            while not len(self.pending_orders) == 0:
                 self._add_pending_orders()
 
-            self._update()
-
-        else:
-            self._replace_reject(order,OrderNotFound)
-
+            self._publish()
         return matched
 
     def _add_order(self, order):
@@ -138,120 +91,160 @@ class Orderbook(object):
         if order.is_buy:
             matched = self._match_order(order, self.asks, deferred_aons)
         else:
-            matched = self._match_order(order, self.asks, deferred_aons)
+            matched = self._match_order(order, self.bids, deferred_aons)
 
         if not order.is_filled and not order.is_ioc:
             if order.is_buy:
-                self.bids.insert(order)
-                if self._check_deferred_aons(deferred_aons, self.asks, self.bids):
+                self._insert(order, self.bids)
+                if self._check_deferred_aons(deferred_aons):
                     matched = True
             else:
-                self.asks.insert(order)
-                if self._check_deferred_aons(deferred_aons, self.asks, self.bids):
+                self._insert(order, self.asks)
+                if self._check_deferred_aons(deferred_aons):
                     matched = True
-
         return matched
 
-    def _add_stop_order(self, order):
-        # if the market price is a better deal then the stop price,
-        # it's not time to panic
+    def _add_stop_order(self,order):
         stopped = order.stop_price < self.market_price
         if stopped:
             if order.is_buy:
-                self.stop_bids.insert(order)
+                self._insert(order, self.bids)
             else:
-                self.stop_asks.insert(order)
-        return stopped
+                self._insert(order, self.asks)
 
-    def _add_trailing_stop_order(self):
+
+    def cancel_order(self, order):
+        if self._find_on_market(order):
+            if order.is_buy:
+                self._erase(order, self.bids)
+            else:
+                self._erase(order, self.asks)
+            self._publish()
+        else:
+            return NotImplemented
+
+    def replace_order(self, order, new_order):
+        matched = False
+        if self._find_on_market(order):
+            size_delta = order.open_qty - new_order.open_qty
+
+
+        else:
+            return NotImplemented
+
+    def _find_on_market(self, order):
+        raise NotImplemented
+
+    def _publish(self):
         return NotImplemented
 
-    def _match_order(self, order, current_orders, deferred_aons):
-        self.engine.match_order(order, current_orders, deferred_aons)
+    def _insert(self, order, queue):
+        return NotImplemented
 
-    def _check_stop_orders(self, price, stop_queue):
-        for stop_order in stop_queue:
-            if price > stop_order.stop_price:
-                stop_queue.erase(stop_order)
-            else:
-                break
+    def _erase(self, order, queue):
+        return NotImplemented
 
-    def _check_deferred_aons(self, aons, asks, bids):
-        result = False
-        for aon_order in aons:
-            matched = self._match_order(aon_order, asks, bids)
-            result += matched
-            if aon_order.is_filled:
-                #todo erase from queue
-                raise NotImplementedError
+    # Matching Functionality ------------------------------------------------------------------------------------------>
+
+    def _check_stop_orders(self):
+        raise NotImplemented
+
+    def _check_deferred_aons(self, deferred_aons):
+        raise NotImplemented
 
     def _add_pending_orders(self):
-        for order in self.pending_orders.queue:
-            return self._add_order(order)
+        raise NotImplemented
 
-    #todo this will be used for fast searches
-    def _find_on_market(self, order):
-        return NotImplementedError
 
-    def _update(self):
-        return NotImplemented
+    # Matching Engines ------------------------------------------------------------------------------------------------>
 
-    def _reject(self, order, error):
-        return NotImplemented
+    def _match_order(self, order, queue, deferred_aons):
+        matched = False
+        deferred_qty = 0
+        deferred_matches = []
+        if not order.is_filled:
+            for current_order in queue:
 
-    def _cancel_reject(self, order, error):
-        return NotImplemented
+                # todo check if current order matches order price
+                if not order.is_post_only:
+                    if not order.is_aon:
+                        if current_order.is_aon:
+                            if current_order.open_qty <= order.open_qty:
+                                trade = self._create_trade(order, current_order)
+                                if trade.qty > 0:
+                                    matched = True
+                                    self._erase(current_order, queue)
+                                    order.open_qty -= trade.qty
+                            else:
+                                self._push_back(deferred_aons, current_order)
+                        else:
+                            trade = self._create_trade(order, current_order)
+                            if trade.qty > 0:
+                                matched = True
+                                if current_order.is_filled:
+                                    self._erase(current_order, queue)
+                                order.open_qty -= trade.qty
+                    else:
+                        if current_order.is_aon:
+                            # if the inbound order can satisfy the
+                            # current order's AON condition
+                            if current_order.open_qty <= order.open_qty:
+                                # if the the matched quantity can satisfy
+                                # the inbound order's AON condition
+                                if order.open_qty <= current_order.open_qty + deferred_qty:
+                                    max_qty = order.open_qty - current_order.open_qty
+                                    traded = self._try_create_deferred_trades()
+                                    if max_qty == traded:
+                                        order.open_qty -= max_qty
+                                        trade = self._create_trade(order, current_order)
+                                        if trade.qty > 0:
+                                            order.open_qty -= trade.qty
+                                            matched = True
+                                            self._erase(queue, current_order)
+                                else:
+                                    deferred_qty += current_order.open_qty
+                                    self._push_back(deferred_aons, queue)
+                            else:
+                                self._push_back(deferred_aons, current_order)
+                        else:
+                            if order.open_qty <= current_order.open_qty + deferred_qty:
+                                traded = self._try_create_deferred_trades()
+                                if order.qty <= current_order.open_qty + traded:
+                                    trade = self._create_trade(order, current_order)
+                                    traded += trade.qty
+                                    if traded > 0:
+                                        order.open_qty -= traded
+                                        matched = True
+                                    if current_order.is_filled:
+                                        self._erase(current_order, queue)
+                            else:
+                                deferred_qty += current_order.open_qty
+                                self._push_back(deferred_matches, current_order)
+                else:
+                    self.cancel_order(order)
+        return matched
 
-    def _replace_reject(self, order, error):
-        return NotImplemented
-
-    def _accept(self):
-        return NotImplemented
-
-    @property
-    def engine(self):
-        if self.engine_type == "fifo":
-            return FifoMatchingEngine()
-        if self.engine_type == "prorata":
-            return ProRataMatchingEngine()
+    def negotiate(self, b, s):
+        if b.is_market and s.is_limit:
+            print("o.lastPrice = s.price()")
+        elif b.is_limit and s.is_market:
+            print("o.lastPrice = b.price()")
+        elif b.is_limit and s.is_limit:
+            print("o.lastPrice = s.price()")
         else:
-            return FifoMatchingEngine()
+            print("o.lastPrice")
 
-    @property
-    def market_price(self):
+    def _create_trade(self, inbound, current):
+        return NotImplemented
+
+    def _try_create_deferred_trades(self, inbound, deferred_matches, max_qty, min_qty, current_orders):
+        traded = 0
+
+
+        return traded
+
+    def _push_back(self, queue, order):
         return NotImplemented
 
 
-
-    def asks(self):
-        return NotImplementedError
-
-    def bids(self):
-        return NotImplementedError
-
-    def trades(self):
-        return NotImplementedError
-
-    def tick(self):
-        return NotImplementedError
-
-    def stats(self):
-        return NotImplementedError
-
-
-
-class Queue():
-    def __init__(self):
-        self.queue = deque()
-
-    def insert(self, order):
-        return NotImplemented
-
-    def erase(self, order):
-        return NotImplemented
-
-    @property
-    def empty(self):
-        return NotImplemented
-
-
+    # ProRata
