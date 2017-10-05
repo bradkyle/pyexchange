@@ -32,6 +32,7 @@ class Order(object):
         self.price = price
         self.kind = kind
         self.side = side
+        self.open_qty = quantity
         self.exec_option = exec_option
         self.is_hidden = is_hidden
         self.is_post_only = is_post_only
@@ -45,6 +46,7 @@ class Order(object):
         self.open_price = price
         self.close_price = 0.0
         self.time_created = time.time()
+        self.resulting_trades = []
 
     def status(self):
         return NotImplemented
@@ -91,10 +93,6 @@ class Order(object):
 
     @property
     def quote_asset(self):
-        return NotImplemented
-
-    @property
-    def open_qty(self):
         return NotImplemented
 
     @property

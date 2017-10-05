@@ -21,4 +21,5 @@ def test_add_stop_order():
 def test_cancel_order():
     return NotImplemented
 
-def cancel
+def test_replace_order():
+    return NotImplemented

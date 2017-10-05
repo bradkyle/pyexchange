@@ -82,15 +82,6 @@ class Exchange():
             raise Error('Cannot find offerbook for asset with symbol: {}'.format(asset_symbol))
         return self.offerbooks[asset]
 
-    def new_offer(self):
-        return NotImplemented
-
-    def cancel_offer(self):
-        return NotImplemented
-
-    def return_offer(self):
-        return NotImplemented
-
     # Ordering & Trades ----------------------------------------------------------------------------------------------->
 
     def new_orderbook(self, symbol, **kwargs):
@@ -104,19 +95,6 @@ class Exchange():
         if pair not in self.orderbooks:
             raise Error('Cannot find orderbook for pair with symbol: {}'.format(symbol))
         return self.orderbooks[pair]
-
-    def new_order(self):
-        return NotImplemented
-
-    def cancel_order(self):
-        return NotImplemented
-
-    def replace_order(self):
-        return NotImplemented
-
-    def return_order(self):
-        return NotImplemented
-
 
     # Setup & Utilities ----------------------------------------------------------------------------------------------->
 
